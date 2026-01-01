@@ -1,57 +1,321 @@
-# Disclaimer
+# Mattermost Todo Plugin v2.0
 
-**This repository is community supported and not maintained by Mattermost. Mattermost disclaims liability for integrations, including Third Party Integrations and Mattermost Integrations. Integrations may be modified or discontinued at any time.**
+[![Release](https://img.shields.io/github/v/release/CONG-TY-ANH-VA-EM/mattermost-plugin-todo)](https://github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo/releases/latest)
 
-# Mattermost Todo Plugin
+[English](#english) | [Tiếng Việt](#tiếng-việt)
 
-[![Build Status](https://img.shields.io/circleci/project/github/mattermost/mattermost-plugin-todo/master.svg)](https://circleci.com/gh/mattermost/mattermost-plugin-todo)
-[![Code Coverage](https://img.shields.io/codecov/c/github/mattermost/mattermost-plugin-todo/master.svg)](https://codecov.io/gh/mattermost/mattermost-plugin-todo)
-[![Release](https://img.shields.io/github/v/release/mattermost/mattermost-plugin-todo)](https://github.com/mattermost/mattermost-plugin-todo/releases/latest)
-[![HW](https://img.shields.io/github/issues/mattermost/mattermost-plugin-todo/Up%20For%20Grabs?color=dark%20green&label=Help%20Wanted)](https://github.com/mattermost/mattermost-plugin-todo/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22Up+For+Grabs%22+label%3A%22Help+Wanted%22)
+---
 
-A plugin to track Todo issues in a list and send you daily reminders about your Todo list.
+## English
 
-**[Help Wanted](https://github.com/mattermost/mattermost-plugin-todo/issues?utf8=%E2%9C%93&q=is%3Aopen+label%3A%22up+for+grabs%22+label%3A%22help+wanted%22+sort%3Aupdated-desc)**
+A powerful enterprise-grade Todo plugin for Mattermost with AI-powered natural language processing, SQL backend, and comprehensive task management features.
 
-## Install
+### ✨ Key Features
 
-1. Go the releases page and download the latest release.
-2. On your Mattermost, go to System Console -> Plugin Management and upload it.
-3. Start using it!
+#### 🚀 v2.0 Highlights
+- **🤖 AI Integration**: Create todos using natural language (powered by OpenAI)
+- **🗄️ SQL Backend**: Scalable PostgreSQL/MySQL storage with migrations
+- **🌍 Internationalization**: Full support for English and Vietnamese
+- **💬 Task Comments**: Threaded discussions on todo items
+- **⏰ Due Dates & Priorities**: Track deadlines and urgency levels
+- **📊 Audit Logs**: Complete traceability for compliance
+- **🔒 Security**: RBAC, input sanitization, XSS protection
 
-## ✨ Enterprise Features
+### 📦 Installation
 
-This integration has been enhanced with enterprise-grade features for better collaboration and task management:
+1. Download the latest release from [GitHub Releases](https://github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo/releases)
+2. Navigate to **System Console → Plugin Management**
+3. Upload `com.mattermost.plugin-todo.tar.gz`
+4. Enable the plugin
 
-- **Relational SQL Backend**: Highly scalable storage supporting concurrency and complex queries.
-- **Task Comments**: Engage in discussions directly on Todo items.
-- **Priority Levels**: Categorize tasks by urgency (Low, Medium, High).
-- **Due Dates**: Set and track deadlines with visual indicators.
-- **Audit Logs**: Enterprise-ready traceability for all task modifications.
-- **Internationalization**: Full support for English and Vietnamese (more coming soon).
+### ⚙️ Configuration
 
-## Usage
+#### Basic Setup
+1. Go to **System Console → Plugins → Todo**
+2. Configure basic settings:
+   - **Hide Team Sidebar**: Toggle sidebar buttons visibility
 
-### Managing Todos
-- **Add with Priority/Due Date**: Use the Sidebar or `/todo add` to create tasks. In the UI, you can specify a priority and a deadline.
-- **Comments**: Open a task in the Sidebar to view and add comments. Manage your discussions directly within the Todo item.
-- **Edit**: Modify task messages, descriptions, priorities, and due dates at any time.
+#### 🤖 AI Features (Optional)
+To enable natural language todo creation:
 
-### Collaboration
-- **Send and Assign**: Easily delegate tasks to other team members. Receivers will get a notification via the Todo bot.
-- **Status Tracking**: Transition tasks between "Open", "Accepted", and "Completed".
+1. **Enable Smart Todo**: Set to `true`
+2. **OpenAI API Key**: Enter your API key (starts with `sk-...`)
+3. **OpenAI Model**: Choose model (default: `gpt-4o`)
 
-Every day you will get a reminder of the issues you need to complete from the `Todo` bot. The message is only sent if you have issues on your Todo list.
+**Get an API Key**: Visit [OpenAI Platform](https://platform.openai.com/api-keys)
 
-## Development
+### 📖 Usage
 
-This plugin contains both a server and web app portion. Read our documentation about the [Developer Workflow](https://developers.mattermost.com/integrate/plugins/developer-workflow/) and [Developer Setup](https://developers.mattermost.com/integrate/plugins/developer-setup/) for more information about developing and extending plugins.
+#### Creating Todos
 
-### Releasing new versions
+**Traditional Method:**
+```
+/todo add Review pull request #123
+```
 
-The version of a plugin is determined at compile time, automatically populating a `version` field in the [plugin manifest](plugin.json):
-* If the current commit matches a tag, the version will match after stripping any leading `v`, e.g. `1.3.1`.
-* Otherwise, the version will combine the nearest tag with `git rev-parse --short HEAD`, e.g. `1.3.1+d06e53e1`.
-* If there is no version tag, an empty version will be combined with the short hash, e.g. `0.0.0+76081421`.
+**🤖 AI Method** (if enabled):
+```
+/todo Call John tomorrow at 3pm urgent
+/todo Fix server crash by Friday high priority
+/todo Review documentation
+```
 
-To disable this behaviour, manually populate and maintain the `version` field.
+The AI automatically extracts:
+- **Task description**: Main content
+- **Due date**: Absolute or relative times
+- **Priority**: High, Medium, Low (inferred from context)
+
+#### Managing Tasks
+
+| Command | Description |
+|---------|-------------|
+| `/todo` | Open your todo list |
+| `/todo add <message>` | Create a new todo |
+| `/todo list` | View all your todos |
+| `/todo pop` | Complete oldest todo |
+| `/todo send @username <message>` | Assign todo to someone |
+| `/todo settings` | Configure reminders |
+
+#### Using the Sidebar
+
+1. Click the **Todo** icon in the right sidebar
+2. **Add Todo**: Click the "+" button
+   - Set priority (Low/Medium/High)
+   - Set due date
+   - Add description
+3. **Comments**: Click on a todo to view/add comments
+4. **Complete**: Check the box to mark as done
+
+### 🔧 Advanced Features
+
+#### Collaboration
+- **Send Tasks**: Delegate to team members with `/todo send @user Task description`
+- **Incoming Requests**: Accept or decline tasks sent to you
+- **Notifications**: Receive updates via the Todo bot
+
+#### Daily Reminders
+Enable daily reminders in settings to get a summary of pending tasks each morning.
+
+#### Comments & Discussion
+- Click any todo item to open the comment thread
+- Add context, updates, or ask questions
+- All comments are tracked in audit logs
+
+### 🛠️ Development
+
+#### Prerequisites
+- Go 1.22+
+- Node.js 18+
+- Mattermost Server 6.5+
+
+#### Building from Source
+
+```bash
+# Build server binaries
+cd server
+go build -o dist/plugin-linux-amd64
+
+# Build webapp
+cd webapp
+npm install
+npm run build
+
+# Package plugin
+make dist
+```
+
+#### Running Tests
+
+```bash
+# Server tests
+cd server
+go test ./...
+
+# Webapp tests
+cd webapp
+npm test
+```
+
+### 📝 License
+
+This project is licensed under the MIT License.
+
+### 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+
+## Tiếng Việt
+
+Plugin Todo cấp doanh nghiệp mạnh mẽ cho Mattermost với xử lý ngôn ngữ tự nhiên AI, backend SQL và các tính năng quản lý tác vụ toàn diện.
+
+### ✨ Tính Năng Chính
+
+#### 🚀 Nâng Cấp v2.0
+- **🤖 Tích Hợp AI**: Tạo todo bằng ngôn ngữ tự nhiên (OpenAI)
+- **🗄️ Backend SQL**: Lưu trữ PostgreSQL/MySQL có khả năng mở rộng
+- **🌍 Đa Ngôn Ngữ**: Hỗ trợ đầy đủ Tiếng Anh và Tiếng Việt
+- **💬 Bình Luận**: Thảo luận trực tiếp trên todo
+- **⏰ Hạn Chót & Ưu Tiên**: Theo dõi deadline và mức độ khẩn cấp
+- **📊 Nhật Ký Kiểm Toán**: Truy xuất đầy đủ để tuân thủ
+- **🔒 Bảo Mật**: RBAC, lọc đầu vào, bảo vệ XSS
+
+### 📦 Cài Đặt
+
+1. Tải phiên bản mới nhất từ [GitHub Releases](https://github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo/releases)
+2. Vào **System Console → Plugin Management**
+3. Tải lên file `com.mattermost.plugin-todo.tar.gz`
+4. Kích hoạt plugin
+
+### ⚙️ Cấu Hình
+
+#### Thiết Lập Cơ Bản
+1. Vào **System Console → Plugins → Todo**
+2. Cấu hình các thiết lập:
+   - **Hide Team Sidebar**: Ẩn/hiện nút trên thanh bên
+
+#### 🤖 Tính Năng AI (Tùy Chọn)
+Để kích hoạt tạo todo bằng ngôn ngữ tự nhiên:
+
+1. **Enable Smart Todo**: Đặt thành `true`
+2. **OpenAI API Key**: Nhập API key của bạn (bắt đầu bằng `sk-...`)
+3. **OpenAI Model**: Chọn model (mặc định: `gpt-4o`)
+
+**Lấy API Key**: Truy cập [OpenAI Platform](https://platform.openai.com/api-keys)
+
+### 📖 Hướng Dẫn Sử Dụng
+
+#### Tạo Todo
+
+**Phương Pháp Truyền Thống:**
+```
+/todo add Xem lại pull request #123
+```
+
+**🤖 Phương Pháp AI** (nếu đã bật):
+```
+/todo Gọi cho John lúc 3 giờ chiều ngày mai khẩn cấp
+/todo Sửa lỗi server trước thứ 6 ưu tiên cao
+/todo Xem lại tài liệu
+```
+
+AI tự động nhận diện:
+- **Mô tả công việc**: Nội dung chính
+- **Hạn chót**: Thời gian tuyệt đối hoặc tương đối
+- **Ưu tiên**: Cao, Trung bình, Thấp (từ ngữ cảnh)
+
+#### Quản Lý Tác Vụ
+
+| Lệnh | Mô Tả |
+|------|-------|
+| `/todo` | Mở danh sách todo |
+| `/todo add <nội dung>` | Tạo todo mới |
+| `/todo list` | Xem tất cả todo |
+| `/todo pop` | Hoàn thành todo cũ nhất |
+| `/todo send @user <nội dung>` | Giao việc cho ai đó |
+| `/todo settings` | Cấu hình nhắc nhở |
+
+#### Sử Dụng Thanh Bên
+
+1. Nhấp vào biểu tượng **Todo** ở thanh bên phải
+2. **Thêm Todo**: Nhấp nút "+"
+   - Đặt ưu tiên (Thấp/Trung bình/Cao)
+   - Đặt hạn chót
+   - Thêm mô tả
+3. **Bình Luận**: Nhấp vào todo để xem/thêm bình luận
+4. **Hoàn Thành**: Tích vào ô để đánh dấu hoàn thành
+
+### 🔧 Tính Năng Nâng Cao
+
+#### Cộng Tác
+- **Giao Việc**: Ủy quyền cho thành viên với `/todo send @user Mô tả công việc`
+- **Yêu Cầu Đến**: Chấp nhận hoặc từ chối việc được giao
+- **Thông Báo**: Nhận cập nhật qua Todo bot
+
+#### Nhắc Nhở Hàng Ngày
+Bật nhắc nhở hàng ngày trong cài đặt để nhận tóm tắt các việc chưa hoàn thành mỗi sáng.
+
+#### Bình Luận & Thảo Luận
+- Nhấp vào bất kỳ todo nào để mở chuỗi bình luận
+- Thêm ngữ cảnh, cập nhật hoặc đặt câu hỏi
+- Tất cả bình luận được theo dõi trong nhật ký kiểm toán
+
+### 🛠️ Phát Triển
+
+#### Yêu Cầu
+- Go 1.22+
+- Node.js 18+
+- Mattermost Server 6.5+
+
+#### Build Từ Source
+
+```bash
+# Build server binaries
+cd server
+go build -o dist/plugin-linux-amd64
+
+# Build webapp
+cd webapp
+npm install
+npm run build
+
+# Đóng gói plugin
+make dist
+```
+
+#### Chạy Tests
+
+```bash
+# Server tests
+cd server
+go test ./...
+
+# Webapp tests
+cd webapp
+npm test
+```
+
+### 📝 Giấy Phép
+
+Dự án này được cấp phép theo MIT License.
+
+### 🤝 Đóng Góp
+
+Rất hoan nghênh các đóng góp! Vui lòng tạo Pull Request.
+
+---
+
+## Troubleshooting / Khắc Phục Sự Cố
+
+### AI Features Not Working / Tính Năng AI Không Hoạt Động
+
+**English:**
+- Verify your OpenAI API key is correct
+- Check that "Enable Smart Todo" is set to `true`
+- Ensure your API key has sufficient credits
+- Check Mattermost logs for detailed error messages
+
+**Tiếng Việt:**
+- Xác minh API key OpenAI của bạn đúng
+- Kiểm tra "Enable Smart Todo" đã đặt thành `true`
+- Đảm bảo API key có đủ credits
+- Kiểm tra log Mattermost để xem thông báo lỗi chi tiết
+
+### Database Connection Issues / Vấn Đề Kết Nối Database
+
+**English:**
+- Plugin automatically uses your Mattermost database configuration
+- Check Mattermost logs for SQL connection errors
+- Verify PostgreSQL/MySQL is running and accessible
+
+**Tiếng Việt:**
+- Plugin tự động sử dụng cấu hình database của Mattermost
+- Kiểm tra log Mattermost để tìm lỗi kết nối SQL
+- Xác minh PostgreSQL/MySQL đang chạy và có thể truy cập
+
+---
+
+**Repository**: [github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo](https://github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo)
+
+**Support**: [GitHub Issues](https://github.com/CONG-TY-ANH-VA-EM/mattermost-plugin-todo/issues)
