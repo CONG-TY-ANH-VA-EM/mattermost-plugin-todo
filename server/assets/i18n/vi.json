@@ -1,0 +1,20 @@
+{
+    "command.help": {
+        "other": "Các lệnh có sẵn:\n\nadd [nội dung]\n\tThêm một việc cần làm.\n\n\tví dụ: /todo add Đừng quên trở nên tuyệt vời\n\nlist\n\tLiệt kê các việc cần làm của bạn.\n\nlist [tên danh sách]\n\tLiệt kê các việc trong một danh sách cụ thể\n\n\tví dụ: /todo list in\n\tví dụ: /todo list out\n\tví dụ (giống /todo list): /todo list my\n\npop\n\tXóa việc cần làm ở đầu danh sách.\n\nsend [người dùng] [nội dung]\n\tGửi việc cần làm cho ai đó\n\n\tví dụ: /todo send @awesomePerson Đừng quên trở nên tuyệt vời\n\nsettings summary [on, off]\n\tCài đặt nhắc nhở hàng ngày\n\n\tví dụ: /todo settings summary on\n\nsettings allow_incoming_task_requests [on, off]\n\tCho phép người khác gửi việc cho bạn?\n\n\tví dụ: /todo settings allow_incoming_task_requests on\n\n\nhelp\n\tHiển thị hướng dẫn."
+    },
+    "command.add.success": {
+        "other": "Đã thêm việc cần làm."
+    },
+    "command.send.success": {
+        "other": "Đã gửi việc cho @{{.Username}}."
+    },
+    "command.pop.success": {
+        "other": "Đã xóa việc ở đầu danh sách."
+    },
+    "command.error.generic": {
+        "other": "Đã xảy ra lỗi không xác định. Vui lòng liên hệ quản trị viên để được hỗ trợ."
+    },
+    "command.error.user": {
+        "other": "__Lỗi: {{.Error}}.__\n\nChạy `/todo help` để xem hướng dẫn sử dụng."
+    }
+}

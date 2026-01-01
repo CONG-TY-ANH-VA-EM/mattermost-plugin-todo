@@ -1,0 +1,22 @@
+{
+    "rhs.header": "Danh sách Todo",
+    "rhs.my_todos": "Việc của tôi",
+    "rhs.incoming": "Đang đến",
+    "rhs.sent": "Đã gửi",
+    "rhs.add_todo": "Thêm Todo",
+    "rhs.no_todos": "Không có việc gì cần làm!",
+    "modal.add.title": "Todo mới",
+    "modal.add.message": "Cần phải làm gì?",
+    "modal.add.save": "Thêm",
+    "modal.add.cancel": "Hủy",
+    "todo.priority": "Ưu tiên",
+    "todo.priority.low": "Thấp",
+    "todo.priority.medium": "Trung bình",
+    "todo.priority.high": "Cao",
+    "todo.due_date": "Hạn chót",
+    "todo.comments": "Bình luận",
+    "todo.comments.hide": "Ẩn bình luận",
+    "todo.comments.none": "Chưa có bình luận nào.",
+    "todo.comments.post": "Gửi",
+    "todo.comments.placeholder": "Thêm bình luận…"
+}

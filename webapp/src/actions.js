@@ -1,4 +1,4 @@
-import {Client4} from 'mattermost-redux/client';
+import { Client4 } from 'mattermost-redux/client';
 import * as TeamSelector from 'mattermost-redux/selectors/entities/teams';
 import * as UserActions from 'mattermost-redux/actions/users';
 
@@ -20,7 +20,7 @@ import {
     GET_ALL_ISSUES,
 } from './action_types';
 
-import {getPluginServerRoute} from './selectors';
+import { getPluginServerRoute } from './selectors';
 
 export const openAddCard = (postID) => (dispatch) => {
     dispatch({
@@ -114,28 +114,28 @@ export function updateRhsState(rhsState) {
 export const telemetry = (event, properties) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/telemetry', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({event, properties}),
+        body: JSON.stringify({ event, properties }),
     }));
 };
 
-export const add = (message, postPermalink, description, sendTo, postID) => async (dispatch, getState) => {
+export const add = (message, postPermalink, description, sendTo, postID, dueAt, priority) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/add', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({send_to: sendTo, message, postPermalink, description, post_id: postID}),
+        body: JSON.stringify({ send_to: sendTo, message, postPermalink, description, post_id: postID, due_at: dueAt, priority }),
     }));
 };
 
-export const editIssue = (postID, message, description) => async (dispatch, getState) => {
+export const editIssue = (id, message, description, dueAt, priority) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/edit', Client4.getOptions({
         method: 'put',
-        body: JSON.stringify({id: postID, message, description}),
+        body: JSON.stringify({ id, message, description, due_at: dueAt, priority }),
     }));
 };
 
 export const changeAssignee = (id, assignee) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/change_assignment', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id, send_to: assignee}),
+        body: JSON.stringify({ id, send_to: assignee }),
     }));
 };
 
@@ -147,7 +147,7 @@ export const fetchAllIssueLists = (reminder = false) => async (dispatch, getStat
         }));
         data = await resp.json();
     } catch (error) {
-        return {error};
+        return { error };
     }
 
     dispatch({
@@ -155,41 +155,41 @@ export const fetchAllIssueLists = (reminder = false) => async (dispatch, getStat
         data,
     });
 
-    return {data};
+    return { data };
 };
 
 export const remove = (id) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/remove', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({ id }),
     }));
 };
 
 export const complete = (id) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/complete', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({ id }),
     }));
 };
 
 export const accept = (id) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/accept', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({ id }),
     }));
 };
 
 export const bump = (id) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/bump', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({ id }),
     }));
 };
 
 export function autocompleteUsers(username) {
     return async (doDispatch, getState) => {
         const team = TeamSelector.getCurrentTeam(getState());
-        const {data} = await doDispatch(UserActions.autocompleteUsers(username, team.id));
+        const { data } = await doDispatch(UserActions.autocompleteUsers(username, team.id));
         return data.users.filter((user) => user.delete_at === 0);
     };
 }
@@ -209,10 +209,43 @@ export const updateConfig = () => async (dispatch, getState) => {
         }));
         data = await resp.json();
     } catch (error) {
-        return {error};
+        return { error };
     }
 
     dispatch(setHideTeamSidebar(data.hide_team_sidebar));
 
-    return {data};
+    return { data };
+};
+export const fetchComments = (id) => async (dispatch, getState) => {
+    try {
+        const resp = await fetch(getPluginServerRoute(getState()) + '/comments/get?id=' + id, Client4.getOptions({
+            method: 'get',
+        }));
+        return await resp.json();
+    } catch (error) {
+        return { error };
+    }
+};
+
+export const addComment = (todoID, message) => async (dispatch, getState) => {
+    try {
+        const resp = await fetch(getPluginServerRoute(getState()) + '/comments/add', Client4.getOptions({
+            method: 'post',
+            body: JSON.stringify({ todo_id: todoID, message }),
+        }));
+        return await resp.json();
+    } catch (error) {
+        return { error };
+    }
+};
+export const deleteComment = (id) => async (dispatch, getState) => {
+    try {
+        const resp = await fetch(getPluginServerRoute(getState()) + '/comments/delete', Client4.getOptions({
+            method: 'post',
+            body: JSON.stringify({ id }),
+        }));
+        return await resp.json();
+    } catch (error) {
+        return { error };
+    }
 };

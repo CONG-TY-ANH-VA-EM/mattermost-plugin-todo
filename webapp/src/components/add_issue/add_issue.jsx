@@ -14,7 +14,7 @@ import Chip from '../../widget/chip/chip';
 import AutocompleteSelector from '../user_selector/autocomplete_selector.tsx';
 import './add_issue.scss';
 import CompassIcon from '../icons/compassIcons';
-import {getProfilePicture} from '../../utils';
+import { getProfilePicture } from '../../utils';
 
 const PostUtils = window.PostUtils;
 
@@ -45,6 +45,8 @@ export default class AddIssue extends React.PureComponent {
             previewMarkdown: false,
             assigneeModal: false,
             isTyping: false,
+            priority: 0,
+            dueAt: '',
         };
     }
 
@@ -80,31 +82,35 @@ export default class AddIssue extends React.PureComponent {
     };
 
     close = () => {
-        const {closeAddBox, removeAssignee} = this.props;
+        const { closeAddBox, removeAssignee } = this.props;
         removeAssignee();
         closeAddBox();
     }
 
     submit = () => {
-        const {submit, postID, assignee, closeAddBox, removeAssignee} = this.props;
-        const {message, postPermalink, description, attachToThread, sendTo} = this.state;
+        const { submit, postID, assignee, closeAddBox, removeAssignee } = this.props;
+        const { message, postPermalink, description, attachToThread, sendTo, priority, dueAt } = this.state;
+        const dueAtTimestamp = dueAt ? new Date(dueAt).getTime() : 0;
+
         this.setState({
             message: '',
             description: '',
             postPermalink: '',
             isTyping: false,
+            priority: 0,
+            dueAt: '',
         });
 
         if (attachToThread) {
             if (assignee) {
-                submit(message, postPermalink, description, assignee.username, postID);
+                submit(message, postPermalink, description, assignee.username, postID, dueAtTimestamp, priority);
             } else {
-                submit(message, postPermalink, description, sendTo, postID);
+                submit(message, postPermalink, description, sendTo, postID, dueAtTimestamp, priority);
             }
         } else if (assignee) {
-            submit(message, postPermalink, description, assignee.username);
+            submit(message, postPermalink, description, assignee.username, '', dueAtTimestamp, priority);
         } else {
-            submit(message, postPermalink, description);
+            submit(message, postPermalink, description, '', '', dueAtTimestamp, priority);
         }
 
         removeAssignee();
@@ -112,7 +118,7 @@ export default class AddIssue extends React.PureComponent {
     };
 
     toggleAssigneeModal = (value) => {
-        this.setState({assigneeModal: value});
+        this.setState({ assigneeModal: value });
     }
 
     onKeyDown = (e) => {
@@ -133,20 +139,20 @@ export default class AddIssue extends React.PureComponent {
     }
 
     render() {
-        const {assignee, visible, theme} = this.props;
+        const { assignee, visible, theme } = this.props;
 
         if (!visible) {
             return null;
         }
 
-        const {message, description, postPermalink} = this.state;
+        const { message, description, postPermalink } = this.state;
         const style = getStyle(theme);
         const formattedMessage = message.includes(`[Permalink](${postPermalink})`) ? message : message + (postPermalink ? `\n[Permalink](${postPermalink})` : '');
 
         return (
             <div className='AddIssueBox'>
                 <div className='AddIssueBox__body'>
-                    <div className='AddIssueBox__check'/>
+                    <div className='AddIssueBox__check' />
                     <div className='AddIssueBox__content'>
                         <div className='todoplugin-issue'>
                             {this.state.previewMarkdown ? (
@@ -199,7 +205,7 @@ export default class AddIssue extends React.PureComponent {
                         <div style={style.chipsContainer}>
                             {!assignee && (
                                 <Chip
-                                    icon={<CompassIcon icon='account-outline'/>}
+                                    icon={<CompassIcon icon='account-outline' />}
                                     onClick={() => this.props.openAssigneeModal('')}
                                 >
                                     {'Assign to…'}
@@ -218,6 +224,30 @@ export default class AddIssue extends React.PureComponent {
                                     <span>{assignee.username}</span>
                                 </button>
                             )}
+                        </div>
+
+                        <div style={style.enterpriseOptions}>
+                            <div style={style.optionItem}>
+                                <label style={style.optionLabel}>{'Priority'}</label>
+                                <select
+                                    style={style.select}
+                                    value={this.state.priority}
+                                    onChange={(e) => this.setState({ priority: parseInt(e.target.value, 10) })}
+                                >
+                                    <option value={0}>{'Low'}</option>
+                                    <option value={1}>{'Medium'}</option>
+                                    <option value={2}>{'High'}</option>
+                                </select>
+                            </div>
+                            <div style={style.optionItem}>
+                                <label style={style.optionLabel}>{'Due Date'}</label>
+                                <input
+                                    type='date'
+                                    style={style.dateInput}
+                                    value={this.state.dueAt}
+                                    onChange={(e) => this.setState({ dueAt: e.target.value })}
+                                />
+                            </div>
                         </div>
 
                         <FullScreenModal
@@ -339,6 +369,40 @@ const getStyle = makeStyleFromTheme((theme) => {
             backgroundColor: 'transparent',
             resize: 'none',
             boxShadow: 'none',
+        },
+        enterpriseOptions: {
+            display: 'flex',
+            marginTop: 12,
+            gap: 16,
+        },
+        optionItem: {
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+        },
+        optionLabel: {
+            fontSize: 11,
+            fontWeight: 600,
+            marginBottom: 4,
+            color: changeOpacity(theme.centerChannelColor, 0.64),
+        },
+        select: {
+            height: 32,
+            borderRadius: 4,
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
+            fontSize: 13,
+            padding: '0 8px',
+        },
+        dateInput: {
+            height: 32,
+            borderRadius: 4,
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
+            fontSize: 13,
+            padding: '0 8px',
         },
     };
 });

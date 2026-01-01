@@ -1,1 +1,22 @@
-{}
+{
+    "rhs.header": "Todo List",
+    "rhs.my_todos": "My Todos",
+    "rhs.incoming": "Incoming",
+    "rhs.sent": "Sent",
+    "rhs.add_todo": "Add Todo",
+    "rhs.no_todos": "Nothing to do!",
+    "modal.add.title": "New Todo",
+    "modal.add.message": "What needs to be done?",
+    "modal.add.save": "Add",
+    "modal.add.cancel": "Cancel",
+    "todo.priority": "Priority",
+    "todo.priority.low": "Low",
+    "todo.priority.medium": "Medium",
+    "todo.priority.high": "High",
+    "todo.due_date": "Due Date",
+    "todo.comments": "Comments",
+    "todo.comments.hide": "Hide Comments",
+    "todo.comments.none": "No comments yet.",
+    "todo.comments.post": "Post",
+    "todo.comments.placeholder": "Add a comment…"
+}

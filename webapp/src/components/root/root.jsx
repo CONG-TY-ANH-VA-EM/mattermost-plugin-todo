@@ -31,12 +31,14 @@ export default class Root extends React.Component {
             sendTo: null,
             attachToThread: false,
             previewMarkdown: false,
+            priority: 0,
+            dueAt: '',
         };
     }
 
     static getDerivedStateFromProps(props, state) {
         if (props.visible && state.message == null) {
-            return {message: props.message};
+            return { message: props.message };
         }
         if (!props.visible && (state.message != null || state.sendTo != null)) {
             return {
@@ -59,25 +61,26 @@ export default class Root extends React.Component {
     };
 
     submit = () => {
-        const {submit, close, postID} = this.props;
-        const {message, sendTo, attachToThread} = this.state;
+        const { submit, close, postID } = this.props;
+        const { message, sendTo, attachToThread, priority, dueAt } = this.state;
+        const dueAtTimestamp = dueAt ? new Date(dueAt).getTime() : 0;
         if (attachToThread) {
-            submit(message, sendTo, postID);
+            submit(message, '', '', sendTo, postID, dueAtTimestamp, priority);
         } else {
-            submit(message, sendTo);
+            submit(message, '', '', sendTo, '', dueAtTimestamp, priority);
         }
 
         close();
     };
 
     render() {
-        const {visible, theme, close} = this.props;
+        const { visible, theme, close } = this.props;
 
         if (!visible) {
             return null;
         }
 
-        const {message} = this.state;
+        const { message } = this.state;
 
         const style = getStyle(theme);
         const activeClass = 'btn btn-primary';
@@ -105,7 +108,7 @@ export default class Root extends React.Component {
                             <button
                                 className={writeButtonClass}
                                 onClick={() => {
-                                    this.setState({previewMarkdown: false});
+                                    this.setState({ previewMarkdown: false });
                                 }}
                             >
                                 {'Write'}
@@ -113,7 +116,7 @@ export default class Root extends React.Component {
                             <button
                                 className={previewButtonClass}
                                 onClick={() => {
-                                    this.setState({previewMarkdown: true});
+                                    this.setState({ previewMarkdown: true });
                                 }}
                             >
                                 {'Preview'}
@@ -134,7 +137,7 @@ export default class Root extends React.Component {
                                 style={style.textarea}
                                 value={message}
                                 onChange={(e) =>
-                                    this.setState({message: e.target.value})
+                                    this.setState({ message: e.target.value })
                                 }
                             />
                         )}
@@ -159,7 +162,7 @@ export default class Root extends React.Component {
                             id='send_to_user'
                             loadOptions={this.props.autocompleteUsers}
                             onSelected={(selected) =>
-                                this.setState({sendTo: selected?.username})
+                                this.setState({ sendTo: selected?.username })
                             }
                             label={'Send to user'}
                             helpText={
@@ -168,6 +171,30 @@ export default class Root extends React.Component {
                             placeholder={''}
                             theme={theme}
                         />
+                    </div>
+
+                    <div style={style.enterpriseOptions}>
+                        <div style={style.optionItem}>
+                            <label style={style.optionLabel}>{'Priority'}</label>
+                            <select
+                                style={style.select}
+                                value={this.state.priority}
+                                onChange={(e) => this.setState({ priority: parseInt(e.target.value, 10) })}
+                            >
+                                <option value={0}>{'Low'}</option>
+                                <option value={1}>{'Medium'}</option>
+                                <option value={2}>{'High'}</option>
+                            </select>
+                        </div>
+                        <div style={style.optionItem}>
+                            <label style={style.optionLabel}>{'Due Date'}</label>
+                            <input
+                                type='date'
+                                style={style.dateInput}
+                                value={this.state.dueAt}
+                                onChange={(e) => this.setState({ dueAt: e.target.value })}
+                            />
+                        </div>
                     </div>
                     <div className='todoplugin-button-container'>
                         <button
@@ -181,7 +208,7 @@ export default class Root extends React.Component {
                             {'Add Todo'}
                         </button>
                     </div>
-                    <div className='todoplugin-divider'/>
+                    <div className='todoplugin-divider' />
                     <div className='todoplugin-clarification'>
                         <div className='todoplugin-question'>
                             {'What does this do?'}
@@ -201,7 +228,7 @@ export default class Root extends React.Component {
                         </div>
                     </div>
                 </div>
-            </FullScreenModal>
+            </FullScreenModal >
         );
     }
 }
@@ -231,6 +258,41 @@ const getStyle = makeStyleFromTheme((theme) => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'end',
+        },
+        enterpriseOptions: {
+            display: 'flex',
+            marginTop: 20,
+            gap: 24,
+            marginBottom: 20,
+        },
+        optionItem: {
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+        },
+        optionLabel: {
+            fontSize: 14,
+            fontWeight: 600,
+            marginBottom: 8,
+            color: theme.centerChannelColor,
+        },
+        select: {
+            height: 40,
+            borderRadius: 4,
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
+            fontSize: 14,
+            padding: '0 12px',
+        },
+        dateInput: {
+            height: 40,
+            borderRadius: 4,
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
+            fontSize: 14,
+            padding: '0 12px',
         },
     };
 });

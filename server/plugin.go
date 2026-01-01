@@ -30,9 +30,9 @@ const (
 // ListManager represents the logic on the lists
 type ListManager interface {
 	// AddIssue adds a todo to userID's myList with the message
-	AddIssue(userID, message, postPermalink, description, postID string) (*Issue, error)
+	AddIssue(userID, message, postPermalink, description, postID string, dueAt int64, priority int) (*Issue, error)
 	// SendIssue sends the todo with the message from senderID to receiverID and returns the receiver's issueID
-	SendIssue(senderID, receiverID, message, postPermalink, description, postID string) (string, error)
+	SendIssue(senderID, receiverID, message, postPermalink, description, postID string, dueAt int64, priority int) (string, error)
 	// GetIssueList gets the todos on listID for userID
 	GetIssueList(userID, listID string) ([]*ExtendedIssue, error)
 	// GetAllList get all issues
@@ -47,12 +47,18 @@ type ListManager interface {
 	PopIssue(userID string) (issue *Issue, foreignID string, err error)
 	// BumpIssue moves a issueID sent by userID to the top of its receiver inbox list
 	BumpIssue(userID string, issueID string) (todo *Issue, receiver string, foreignIssueID string, err error)
+	// Comments
+	AddComment(todoID, userID, message string) (*Comment, error)
+	GetIssueComments(todoID string) ([]*ExtendedComment, error)
+	DeleteComment(commentID, userID string) error
 	// EditIssue updates the message on an issue
-	EditIssue(userID string, issueID string, newMessage string, newDescription string) (foreignUserID string, list string, oldMessage string, err error)
+	EditIssue(userID string, issueID string, newMessage string, newDescription string, newDueAt int64, newPriority int) (foreignUserID string, list string, oldMessage string, err error)
 	// ChangeAssignment updates an issue to assign a different person
 	ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, err error)
 	// GetUserName returns the readable username from userID
 	GetUserName(userID string) string
+	// IsAuthorized checks if the user has access to the todo
+	IsAuthorized(todoID string, userID string) (bool, error)
 }
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -72,6 +78,7 @@ type Plugin struct {
 	configuration *configuration
 
 	listManager ListManager
+	store       ListStore
 
 	telemetryClient telemetry.Client
 	tracker         telemetry.Tracker
@@ -81,6 +88,10 @@ func (p *Plugin) OnActivate() error {
 	config := p.getConfiguration()
 	if err := config.IsValid(); err != nil {
 		return err
+	}
+
+	if err := p.loadI18n(); err != nil {
+		return errors.Wrap(err, "failed to load i18n")
 	}
 
 	if p.client == nil {
@@ -97,7 +108,13 @@ func (p *Plugin) OnActivate() error {
 	}
 	p.BotUserID = botID
 
-	p.listManager = NewListManager(p.API)
+	sqlStore, err := NewSQLStore(p.API)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize SQL store")
+	}
+	p.store = sqlStore
+
+	p.listManager = NewListManager(p.API, sqlStore)
 
 	p.initializeAPI()
 
@@ -124,16 +141,23 @@ func (p *Plugin) initializeAPI() {
 	p.router = mux.NewRouter()
 	p.router.Use(p.withRecovery)
 
-	p.router.HandleFunc("/add", p.checkAuth(p.handleAdd)).Methods(http.MethodPost)
-	p.router.HandleFunc("/lists", p.checkAuth(p.handleLists)).Methods(http.MethodGet)
-	p.router.HandleFunc("/remove", p.checkAuth(p.handleRemove)).Methods(http.MethodPost)
-	p.router.HandleFunc("/complete", p.checkAuth(p.handleComplete)).Methods(http.MethodPost)
-	p.router.HandleFunc("/accept", p.checkAuth(p.handleAccept)).Methods(http.MethodPost)
-	p.router.HandleFunc("/bump", p.checkAuth(p.handleBump)).Methods(http.MethodPost)
-	p.router.HandleFunc("/telemetry", p.checkAuth(p.handleTelemetry)).Methods(http.MethodPost)
-	p.router.HandleFunc("/config", p.checkAuth(p.handleConfig)).Methods(http.MethodGet)
-	p.router.HandleFunc("/edit", p.checkAuth(p.handleEdit)).Methods(http.MethodPut)
-	p.router.HandleFunc("/change_assignment", p.checkAuth(p.handleChangeAssignment)).Methods(http.MethodPost)
+	p.router.Handle("/add", p.checkAuth(http.HandlerFunc(p.handleAdd))).Methods(http.MethodPost)
+	p.router.Handle("/lists", p.checkAuth(http.HandlerFunc(p.handleLists))).Methods(http.MethodGet)
+	p.router.Handle("/remove", p.checkAuth(http.HandlerFunc(p.handleRemove))).Methods(http.MethodPost)
+	p.router.Handle("/complete", p.checkAuth(http.HandlerFunc(p.handleComplete))).Methods(http.MethodPost)
+	p.router.Handle("/accept", p.checkAuth(http.HandlerFunc(p.handleAccept))).Methods(http.MethodPost)
+	p.router.Handle("/bump", p.checkAuth(http.HandlerFunc(p.handleBump))).Methods(http.MethodPost)
+	p.router.Handle("/telemetry", p.checkAuth(http.HandlerFunc(p.handleTelemetry))).Methods(http.MethodPost)
+	p.router.Handle("/config", p.checkAuth(http.HandlerFunc(p.handleConfig))).Methods(http.MethodGet)
+	p.router.Handle("/edit", p.checkAuth(http.HandlerFunc(p.handleEdit))).Methods(http.MethodPut)
+	p.router.Handle("/change_assignment", p.checkAuth(http.HandlerFunc(p.handleChangeAssignment))).Methods(http.MethodPost)
+
+	commentsRouter := p.router.PathPrefix("/comments").Subrouter()
+	commentsRouter.Use(p.checkAuth) // Apply checkAuth to all comments routes
+
+	commentsRouter.HandleFunc("/get", p.handleGetComments).Methods(http.MethodGet)
+	commentsRouter.HandleFunc("/add", p.handleAddComment).Methods(http.MethodPost)
+	commentsRouter.HandleFunc("/delete", p.handleDeleteComment).Methods(http.MethodPost)
 
 	// 404 handler
 	p.router.Handle("{anything:.*}", http.NotFoundHandler())
@@ -161,16 +185,15 @@ func (p *Plugin) withRecovery(next http.Handler) http.Handler {
 	})
 }
 
-func (p *Plugin) checkAuth(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (p *Plugin) checkAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("Mattermost-User-ID")
 		if userID == "" {
 			http.Error(w, "Not authorized", http.StatusUnauthorized)
 			return
 		}
-
-		handler(w, r)
-	}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (p *Plugin) handleTelemetry(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +236,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	senderName := p.listManager.GetUserName(userID)
 
 	if addRequest.SendTo == "" {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt, addRequest.Priority)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -239,7 +262,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receiver.Id == userID {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink)
+		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt, addRequest.Priority)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -266,7 +289,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issueID, err := p.listManager.SendIssue(userID, receiver.Id, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+	issueID, err := p.listManager.SendIssue(userID, receiver.Id, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt, addRequest.Priority)
 	if err != nil {
 		msg := "Unable to send issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -364,7 +387,11 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description)
+	if !p.checkAuthorization(w, editRequest.ID, userID) {
+		return
+	}
+
+	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description, editRequest.DueAt, editRequest.Priority)
 	if err != nil {
 		msg := "Unable to edit message"
 		p.API.LogError(msg, "err", err.Error())
@@ -402,7 +429,11 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err = changeRequest.IsValid(); err != nil {
-		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate change request payload.", err)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate change assignment request payload.", err)
+		return
+	}
+
+	if !p.checkAuthorization(w, changeRequest.ID, userID) {
 		return
 	}
 
@@ -455,6 +486,10 @@ func (p *Plugin) handleAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !p.checkAuthorization(w, acceptRequest.ID, userID) {
+		return
+	}
+
 	todoMessage, sender, err := p.listManager.AcceptIssue(userID, acceptRequest.ID)
 	if err != nil {
 		msg := "Unable to accept issue"
@@ -486,6 +521,10 @@ func (p *Plugin) handleComplete(w http.ResponseWriter, r *http.Request) {
 
 	if err = completeRequest.IsValid(); err != nil {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate complete issue request payload.", err)
+		return
+	}
+
+	if !p.checkAuthorization(w, completeRequest.ID, userID) {
 		return
 	}
 
@@ -532,6 +571,10 @@ func (p *Plugin) handleRemove(w http.ResponseWriter, r *http.Request) {
 
 	if err = removeRequest.IsValid(); err != nil {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate remove issue request payload.", err)
+		return
+	}
+
+	if !p.checkAuthorization(w, removeRequest.ID, userID) {
 		return
 	}
 
@@ -583,7 +626,11 @@ func (p *Plugin) handleBump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = bumpRequest.IsValid(); err != nil {
-		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate bump request payload.", err)
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate bump issue request payload.", err)
+		return
+	}
+
+	if !p.checkAuthorization(w, bumpRequest.ID, userID) {
 		return
 	}
 
@@ -669,4 +716,122 @@ func (p *Plugin) handleErrorWithCode(w http.ResponseWriter, code int, errTitle s
 		Details: err.Error(),
 	})
 	_, _ = w.Write(b)
+}
+
+func (p *Plugin) handleGetComments(w http.ResponseWriter, r *http.Request) {
+	todoID := r.URL.Query().Get("id")
+	if todoID == "" {
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Missing id parameter", nil)
+		return
+	}
+
+	userID := r.Header.Get("Mattermost-User-ID")
+
+	if !p.checkAuthorization(w, todoID, userID) {
+		return
+	}
+
+	comments, err := p.listManager.GetIssueComments(todoID)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusInternalServerError, "Unable to get comments", err)
+		return
+	}
+
+	b, _ := json.Marshal(comments)
+	w.Write(b)
+}
+
+func (p *Plugin) handleAddComment(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("Mattermost-User-ID")
+
+	req, err := GetCommentPayloadFromJSON(r.Body)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to parse comment payload", err)
+		return
+	}
+
+	if req.TodoID == "" || req.Message == "" {
+		p.handleErrorWithCode(w, http.StatusBadRequest, "TodoID and Message are required", nil)
+		return
+	}
+
+	if !p.checkAuthorization(w, req.TodoID, userID) {
+		return
+	}
+
+	comment, err := p.listManager.AddComment(req.TodoID, userID, req.Message)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusInternalServerError, "Unable to add comment", err)
+		return
+	}
+
+	p.sendRefreshEvent(userID, []string{MyListKey, InListKey, OutListKey})
+	// Also notify other involved user if any
+	issue, _ := p.store.GetIssue(req.TodoID)
+	if issue != nil {
+		otherUser := issue.CreatorID
+		if userID == issue.CreatorID {
+			otherUser = issue.AssigneeID
+		}
+		if otherUser != userID {
+			p.sendRefreshEvent(otherUser, []string{MyListKey, InListKey, OutListKey})
+		}
+	}
+
+	b, _ := json.Marshal(comment)
+	w.Write(b)
+}
+
+func (p *Plugin) checkAuthorization(w http.ResponseWriter, todoID, userID string) bool {
+	authorized, err := p.listManager.IsAuthorized(todoID, userID)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusInternalServerError, "Unable to check authorization", err)
+		return false
+	}
+	if !authorized {
+		p.handleErrorWithCode(w, http.StatusForbidden, "Not authorized for this todo", nil)
+		return false
+	}
+	return true
+}
+
+func (p *Plugin) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("Mattermost-User-ID")
+
+	req, err := GetCommentPayloadFromJSON(r.Body)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to parse comment payload", err)
+		return
+	}
+
+	if req.ID == "" {
+		p.handleErrorWithCode(w, http.StatusBadRequest, "Comment ID is required", nil)
+		return
+	}
+
+	comment, err := p.store.GetComment(req.ID)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusInternalServerError, "Unable to fetch comment", err)
+		return
+	}
+
+	err = p.listManager.DeleteComment(req.ID, userID)
+	if err != nil {
+		p.handleErrorWithCode(w, http.StatusInternalServerError, "Unable to delete comment", err)
+		return
+	}
+
+	p.sendRefreshEvent(userID, []string{MyListKey, InListKey, OutListKey})
+	issue, _ := p.store.GetIssue(comment.TodoID)
+	if issue != nil {
+		otherUser := issue.CreatorID
+		if userID == issue.CreatorID {
+			otherUser = issue.AssigneeID
+		}
+		if otherUser != userID {
+			p.sendRefreshEvent(otherUser, []string{MyListKey, InListKey, OutListKey})
+		}
+	}
+
+	w.Write([]byte(`{"status": "OK"}`))
 }

@@ -39,6 +39,8 @@ type AddAPIRequest struct {
 	Description   string `json:"description"`
 	SendTo        string `json:"send_to"`
 	PostID        string `json:"post_id"`
+	DueAt         int64  `json:"due_at"`
+	Priority      int    `json:"priority"`
 }
 
 func GetAddIssuePayloadFromJSON(data io.Reader) (*AddAPIRequest, error) {
@@ -66,6 +68,8 @@ type EditAPIRequest struct {
 	ID          string `json:"id"`
 	Message     string `json:"message"`
 	Description string `json:"description"`
+	DueAt       int64  `json:"due_at"`
+	Priority    int    `json:"priority"`
 }
 
 func GetEditIssuePayloadFromJSON(data io.Reader) (*EditAPIRequest, error) {
@@ -216,5 +220,27 @@ func (b *BumpAPIRequest) IsValid() error {
 		return errors.New("id is required")
 	}
 
+	return nil
+}
+
+type CommentAPIRequest struct {
+	ID      string `json:"id"`
+	TodoID  string `json:"todo_id"`
+	Message string `json:"message"`
+}
+
+func GetCommentPayloadFromJSON(data io.Reader) (*CommentAPIRequest, error) {
+	body := &CommentAPIRequest{}
+	if err := json.NewDecoder(data).Decode(&body); err != nil {
+		return nil, err
+	}
+
+	return body, nil
+}
+
+func (c *CommentAPIRequest) IsValid() error {
+	if c == nil {
+		return errors.New("invalid request body")
+	}
 	return nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/pkg/errors"
 )
@@ -41,6 +42,24 @@ type ListStore interface {
 	GetIssueListAndReference(userID, issueID string) (string, *IssueRef, int)
 	// GetList returns the list of IssueRef in listID for userID
 	GetList(userID, listID string) ([]*IssueRef, error)
+
+	// Preferences
+	SetReminderPreference(userID string, enabled bool) error
+	GetReminderPreference(userID string) bool
+	SetLastReminderTime(userID string, time int64) error
+	GetLastReminderTime(userID string) (int64, error)
+	SetAllowIncomingTaskPreference(userID string, enabled bool) error
+	GetAllowIncomingTaskPreference(userID string) (bool, error)
+
+	// Comments
+	SaveComment(comment *Comment) error
+	GetComments(todoID string) ([]*Comment, error)
+	DeleteComment(commentID string) error
+	GetComment(commentID string) (*Comment, error)
+
+	// Audit Log
+	AddAuditLog(log *AuditLog) error
+	GetAuditLogs(todoID string) ([]*AuditLog, error)
 }
 
 type listManager struct {
@@ -49,15 +68,17 @@ type listManager struct {
 }
 
 // NewListManager creates a new listManager
-func NewListManager(api plugin.API) ListManager {
+func NewListManager(api plugin.API, store ListStore) ListManager {
 	return &listManager{
-		store: NewListStore(api),
+		store: store,
 		api:   api,
 	}
 }
 
-func (l *listManager) AddIssue(userID, message, postPermalink, description, postID string) (*Issue, error) {
-	issue := newIssue(message, postPermalink, description, postID)
+func (l *listManager) AddIssue(userID, message, postPermalink, description, postID string, dueAt int64, priority int) (*Issue, error) {
+	message = SanitizeInput(message)
+	description = SanitizeMultiline(description)
+	issue := newIssue(message, postPermalink, description, postID, userID, userID, "open", dueAt, priority)
 
 	if err := l.store.SaveIssue(issue); err != nil {
 		return nil, err
@@ -69,17 +90,20 @@ func (l *listManager) AddIssue(userID, message, postPermalink, description, post
 		}
 		return nil, err
 	}
+	l.recordAuditLog(issue.ID, userID, "create", "")
 
 	return issue, nil
 }
 
-func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, description, postID string) (string, error) {
-	senderIssue := newIssue(message, postPermalink, description, postID)
+func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, description, postID string, dueAt int64, priority int) (string, error) {
+	message = SanitizeInput(message)
+	description = SanitizeMultiline(description)
+	senderIssue := newIssue(message, postPermalink, description, postID, senderID, receiverID, "pending", dueAt, priority)
 	if err := l.store.SaveIssue(senderIssue); err != nil {
 		return "", err
 	}
 
-	receiverIssue := newIssue(message, postPermalink, description, postID)
+	receiverIssue := newIssue(message, postPermalink, description, postID, senderID, receiverID, "pending", dueAt, priority)
 	if err := l.store.SaveIssue(receiverIssue); err != nil {
 		if rollbackError := l.store.RemoveIssue(senderIssue.ID); rollbackError != nil {
 			l.api.LogError("cannot rollback sender issue after send error, Err=", err.Error())
@@ -109,6 +133,8 @@ func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, de
 		}
 		return "", err
 	}
+	l.recordAuditLog(senderIssue.ID, senderID, "send", receiverID)
+	l.recordAuditLog(receiverIssue.ID, receiverID, "receive", senderID)
 
 	return receiverIssue.ID, nil
 }
@@ -163,10 +189,16 @@ func (l *listManager) CompleteIssue(userID, issueID string) (issue *Issue, forei
 		return nil, "", issueList, err
 	}
 
-	issue, err = l.store.GetAndRemoveIssue(issueID)
+	issue, err = l.store.GetIssue(issueID)
 	if err != nil {
-		l.api.LogError("cannot remove issue, Err=", err.Error())
+		return nil, "", issueList, err
 	}
+	issue.Status = "completed"
+	issue.UpdateAt = model.GetMillis()
+	if err := l.store.SaveIssue(issue); err != nil {
+		l.api.LogError("cannot update issue status, Err=", err.Error())
+	}
+	l.recordAuditLog(issueID, userID, "complete", "")
 
 	if ir.ForeignUserID == "" {
 		return issue, "", issueList, nil
@@ -177,46 +209,51 @@ func (l *listManager) CompleteIssue(userID, issueID string) (issue *Issue, forei
 		l.api.LogError("cannot clean foreigner list after complete, Err=", err.Error())
 	}
 
-	issue, err = l.store.GetAndRemoveIssue(ir.ForeignIssueID)
-	if err != nil {
-		l.api.LogError("cannot clean foreigner issue after complete, Err=", err.Error())
+	foreignIssue, err := l.store.GetIssue(ir.ForeignIssueID)
+	if err == nil {
+		foreignIssue.Status = "completed"
+		foreignIssue.UpdateAt = model.GetMillis()
+		_ = l.store.SaveIssue(foreignIssue)
 	}
 
 	return issue, ir.ForeignUserID, issueList, nil
 }
-
-func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription string) (foreignUserID, list, oldMessage string, err error) {
+func (l *listManager) EditIssue(userID string, issueID string, newMessage string, newDescription string, newDueAt int64, newPriority int) (string, string, string, error) {
 	issue, err := l.store.GetIssue(issueID)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	list, ir, _ := l.store.GetIssueListAndReference(userID, issueID)
-	if ir == nil {
-		return "", "", "", errors.New("reference not found")
-	}
+	list, _, _ := l.store.GetIssueListAndReference(userID, issueID)
 
-	if ir.ForeignIssueID != "" {
-		foreignIssue, foreignErr := l.store.GetIssue(ir.ForeignIssueID)
+	oldMessage := issue.Message
+	message := SanitizeInput(newMessage)
+	description := SanitizeMultiline(newDescription)
+
+	if issue.ForeignIssueID != "" {
+		foreignIssue, foreignErr := l.store.GetIssue(issue.ForeignIssueID)
 		if foreignErr == nil {
-			oldMessage = foreignIssue.Message
-			foreignIssue.Message = newMessage
-			foreignIssue.Description = newDescription
-			foreignErr = l.store.SaveIssue(foreignIssue)
-			if foreignErr != nil {
-				l.api.LogError("cannot edit foreign issue after edit", "error", foreignErr.Error())
-			}
+			foreignIssue.Message = message
+			foreignIssue.Description = description
+			foreignIssue.DueAt = newDueAt
+			foreignIssue.Priority = newPriority
+			foreignIssue.UpdateAt = model.GetMillis()
+			_ = l.store.SaveIssue(foreignIssue)
 		}
 	}
 
-	issue.Message = newMessage
-	issue.Description = newDescription
-	err = l.store.SaveIssue(issue)
-	if err != nil {
+	issue.Message = message
+	issue.Description = description
+	issue.DueAt = newDueAt
+	issue.Priority = newPriority
+	issue.UpdateAt = model.GetMillis()
+
+	if err := l.store.SaveIssue(issue); err != nil {
 		return "", "", "", err
 	}
+	l.recordAuditLog(issue.ID, userID, "edit", "")
 
-	return ir.ForeignUserID, list, oldMessage, nil
+	return issue.ForeignUserID, list, oldMessage, nil
 }
 
 func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, err error) {
@@ -269,7 +306,7 @@ func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo str
 		}
 	}
 
-	receiverIssue := newIssue(issue.Message, issue.PostPermalink, issue.Description, issue.PostID)
+	receiverIssue := newIssue(issue.Message, issue.PostPermalink, issue.Description, issue.PostID, userID, sendTo, "pending", issue.DueAt, issue.Priority)
 	if err := l.store.SaveIssue(receiverIssue); err != nil {
 		return nil, "", err
 	}
@@ -278,9 +315,8 @@ func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo str
 		return nil, "", err
 	}
 
-	if err := l.store.AddReference(sendTo, receiverIssue.ID, InListKey, userID, issue.ID); err != nil {
-		return nil, "", err
-	}
+	l.recordAuditLog(receiverIssue.ID, sendTo, "receive", userID)
+	l.recordAuditLog(issueID, userID, "reassign", sendTo)
 
 	return issue, ir.ForeignUserID, nil
 }
@@ -312,6 +348,8 @@ func (l *listManager) AcceptIssue(userID, issueID string) (todoMessage string, f
 		return "", "", err
 	}
 
+	l.recordAuditLog(issueID, userID, "accept", ir.ForeignUserID)
+
 	if issue.PostPermalink != "" {
 		issue.Message = fmt.Sprintf("%s\n[Permalink](%s)", issue.Message, issue.PostPermalink)
 	}
@@ -329,15 +367,20 @@ func (l *listManager) RemoveIssue(userID, issueID string) (outIssue *Issue, fore
 		return nil, "", false, issueList, err
 	}
 
-	issue, err := l.store.GetAndRemoveIssue(issueID)
+	issue, err := l.store.GetIssue(issueID)
 	if err != nil {
-		l.api.LogError("cannot remove issue, Err=", err.Error())
+		return nil, "", false, issueList, err
+	}
+	issue.Status = "removed"
+	issue.UpdateAt = model.GetMillis()
+	if err := l.store.SaveIssue(issue); err != nil {
+		l.api.LogError("cannot update issue status, Err=", err.Error())
 	}
 
 	if ir.ForeignUserID == "" {
+		l.recordAuditLog(issueID, userID, "remove", "")
 		return issue, "", false, issueList, nil
 	}
-
 	list, _, _ := l.store.GetIssueListAndReference(ir.ForeignUserID, ir.ForeignIssueID)
 
 	err = l.store.RemoveReference(ir.ForeignUserID, ir.ForeignIssueID, list)
@@ -349,6 +392,8 @@ func (l *listManager) RemoveIssue(userID, issueID string) (outIssue *Issue, fore
 	if err != nil {
 		l.api.LogError("cannot clean foreigner issue after remove, Err=", err.Error())
 	}
+
+	l.recordAuditLog(issueID, userID, "remove", "")
 
 	return issue, ir.ForeignUserID, list == OutListKey, issueList, nil
 }
@@ -363,11 +408,16 @@ func (l *listManager) PopIssue(userID string) (issue *Issue, foreignID string, e
 		return nil, "", errors.New("unexpected nil for issue reference")
 	}
 
-	issue, err = l.store.GetAndRemoveIssue(ir.IssueID)
+	issue, err = l.store.GetIssue(ir.IssueID)
 	if err != nil {
-		l.api.LogError("cannot remove issue after pop, Err=", err.Error())
+		l.api.LogError("cannot find issue after pop, Err=", err.Error())
+		return nil, "", err
 	}
-
+	issue.Status = "completed"
+	issue.UpdateAt = model.GetMillis()
+	if err := l.store.SaveIssue(issue); err != nil {
+		l.api.LogError("cannot update issue status after pop, Err=", err.Error())
+	}
 	if ir.ForeignUserID == "" {
 		return issue, "", nil
 	}
@@ -376,9 +426,11 @@ func (l *listManager) PopIssue(userID string) (issue *Issue, foreignID string, e
 	if err != nil {
 		l.api.LogError("cannot clean foreigner list after pop, Err=", err.Error())
 	}
-	issue, err = l.store.GetAndRemoveIssue(ir.ForeignIssueID)
-	if err != nil {
-		l.api.LogError("cannot clean foreigner issue after pop, Err=", err.Error())
+	foreignIssue, err := l.store.GetIssue(ir.ForeignIssueID)
+	if err == nil {
+		foreignIssue.Status = "completed"
+		foreignIssue.UpdateAt = model.GetMillis()
+		_ = l.store.SaveIssue(foreignIssue)
 	}
 
 	return issue, ir.ForeignUserID, nil
@@ -404,6 +456,8 @@ func (l *listManager) BumpIssue(userID, issueID string) (todo *Issue, receiver s
 		l.api.LogError("cannot find foreigner issue after bump, Err=", err.Error())
 		return nil, "", "", nil
 	}
+
+	l.recordAuditLog(ir.ForeignIssueID, ir.ForeignUserID, "bumped_by", userID)
 
 	return issue, ir.ForeignUserID, ir.ForeignIssueID, nil
 }
@@ -448,4 +502,83 @@ func (l *listManager) extendIssueInfo(issue *Issue, ir *IssueRef) *ExtendedIssue
 	feIssue.ForeignPosition = n
 
 	return feIssue
+}
+
+func (l *listManager) AddComment(todoID, userID, message string) (*Comment, error) {
+	message = SanitizeMultiline(message)
+	comment := &Comment{
+		TodoID:  todoID,
+		UserID:  userID,
+		Message: message,
+	}
+	if err := l.store.SaveComment(comment); err != nil {
+		return nil, err
+	}
+	l.recordAuditLog(todoID, userID, "add_comment", comment.ID)
+	return comment, nil
+}
+
+func (l *listManager) GetIssueComments(todoID string) ([]*ExtendedComment, error) {
+	comments, err := l.store.GetComments(todoID)
+	if err != nil {
+		return nil, err
+	}
+
+	extendedComments := make([]*ExtendedComment, 0, len(comments))
+	for _, c := range comments {
+		ec := &ExtendedComment{
+			Comment:  *c,
+			UserName: l.GetUserName(c.UserID),
+		}
+		extendedComments = append(extendedComments, ec)
+	}
+
+	return extendedComments, nil
+}
+
+func (l *listManager) DeleteComment(commentID, userID string) error {
+	comment, err := l.store.GetComment(commentID)
+	if err != nil {
+		return err
+	}
+
+	if comment.UserID != userID {
+		return errors.New("not authorized to delete this comment")
+	}
+
+	if err := l.store.DeleteComment(commentID); err != nil {
+		return err
+	}
+	l.recordAuditLog(comment.TodoID, userID, "delete_comment", commentID)
+	return nil
+}
+
+func (l *listManager) recordAuditLog(todoID, userID, action, metadata string) {
+	log := &AuditLog{
+		TodoID:   todoID,
+		UserID:   userID,
+		Action:   action,
+		Metadata: metadata,
+	}
+	if err := l.store.AddAuditLog(log); err != nil {
+		l.api.LogError("failed to record audit log", "error", err.Error())
+	}
+}
+
+func (l *listManager) IsAuthorized(todoID, userID string) (bool, error) {
+	// Root bypass
+	user, err := l.api.GetUser(userID)
+	if err == nil && user.IsSystemAdmin() {
+		return true, nil
+	}
+
+	issue, err2 := l.store.GetIssue(todoID)
+	if err2 != nil {
+		return false, err2
+	}
+
+	if issue.CreatorID == userID || issue.AssigneeID == userID {
+		return true, nil
+	}
+	return false, nil
 }

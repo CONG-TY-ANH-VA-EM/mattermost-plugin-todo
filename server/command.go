@@ -6,8 +6,11 @@ import (
 	"regexp"
 	"strings"
 
+	"time"
+
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
+	"github.com/mattermost/mattermost-plugin-todo/server/llm"
 )
 
 const (
@@ -17,46 +20,8 @@ const (
 	OutFlag           = "out"
 )
 
-func getHelp() string {
-	return `Available Commands:
-
-add [message]
-	Adds a Todo.
-
-	example: /todo add Don't forget to be awesome
-
-list
-	Lists your Todo issues.
-
-list [listName]
-	List your issues in certain list
-
-	example: /todo list in
-	example: /todo list out
-	example (same as /todo list): /todo list my
-
-pop
-	Removes the Todo issue at the top of the list.
-
-send [user] [message]
-	Sends some user a Todo
-
-	example: /todo send @awesomePerson Don't forget to be awesome
-
-settings summary [on, off]
-	Sets user preference on daily reminders
-
-	example: /todo settings summary on
-
-settings allow_incoming_task_requests [on, off]
-	Allow other Mattermost users to send a task for you to accept/decline?
-
-	example: /todo settings allow_incoming_task_requests on
-
-
-help
-	Display usage.
-`
+func (p *Plugin) getHelp(userID string) string {
+	return p.Localize(userID, "command.help", nil)
 }
 
 func getSummarySetting(flag bool) string {
@@ -130,12 +95,75 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 		case "settings":
 			handler = p.runSettingsCommand
 		default:
+			// Check if AI is enabled
+			config := p.getConfiguration()
+			if config.EnableSmartTodo && config.LLMApiKey != "" {
+				llmService := llm.NewOpenAIService(config.LLMApiKey, config.LLMModel)
+				user, _ := p.API.GetUser(args.UserId)
+				timezone := ""
+				if user != nil {
+					timezone = user.Timezone["manualTimezone"]
+					if timezone == "" {
+						timezone = user.Timezone["automaticTimezone"]
+					}
+				}
+
+				intent, err := llmService.ParseIntent(strings.Join(stringArgs[1:], " "), timezone)
+				if err == nil && intent != nil {
+					// Prepare arguments for runAddCommand or runSendCommand
+					// For now, only support Add Issue via AI to keep it simple and safe
+					// We need to pass the structed data to listManager directly or via runAddCommand
+					
+					// If we go via runAddCommand, we need to format it back to string or refactor runAddCommand.
+					// Direct call to listManager.AddIssue is cleaner but we need to handle response messages.
+
+					// Mapping Priority
+					priority := 0
+					switch strings.ToLower(intent.Priority) {
+					case "low":
+						priority = 1
+					case "medium":
+						priority = 2
+					case "high":
+						priority = 3
+					}
+
+					// Parsing DueAt
+					var dueAt int64
+					if intent.DueAt != "" {
+						t, _ := time.Parse(time.RFC3339, intent.DueAt)
+						dueAt = t.UnixMilli()
+					}
+
+					// If assignee is present (and not me), we could try to send it.
+					// But for simplicity of Phase 1 AI, let's just create a Todo for self with attributes.
+					// To do that, we need to call listManager.AddIssue directly because runAddCommand doesn't accept priority/dueAt yet (it parses from string only if we implemented flags, but currently it just takes the whole string as message).
+					
+					// Actually, checking runAddCommand (lines 172+):
+					// message := strings.Join(args, " ")
+					// newIssue, err := p.listManager.AddIssue(extra.UserId, message, "", "", "", 0, 0)
+					
+					// So runAddCommand hardcodes priority/dueAt to 0. 
+					// We must call listManager.AddIssue directly here.
+
+					_, err := p.listManager.AddIssue(args.UserId, intent.Summary, "", "", "", dueAt, priority)
+					if err != nil {
+						p.postCommandResponse(args, "Failed to create smart todo: "+err.Error())
+					} else {
+						p.trackAddIssue(args.UserId, "smart_todo", false)
+						p.sendRefreshEvent(args.UserId, []string{MyListKey})
+						p.postCommandResponse(args, p.Localize(args.UserId, "command.add.success", nil))
+					}
+					return &model.CommandResponse{}, nil
+				}
+			}
+
 			if command == "help" {
 				p.trackCommand(args.UserId, command)
 			} else {
 				p.trackCommand(args.UserId, "not found")
 			}
-			p.postCommandResponse(args, getHelp())
+			p.postCommandResponse(args, p.getHelp(args.UserId))
 			return &model.CommandResponse{}, nil
 		}
 		p.trackCommand(args.UserId, command)
@@ -143,10 +171,10 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 	isUserError, err := handler(restOfArgs, args)
 	if err != nil {
 		if isUserError {
-			p.postCommandResponse(args, fmt.Sprintf("__Error: %s.__\n\nRun `/todo help` for usage instructions.", err.Error()))
+			p.postCommandResponse(args, p.Localize(args.UserId, "command.error.user", map[string]interface{}{"Error": err.Error()}))
 		} else {
 			p.API.LogError(err.Error())
-			p.postCommandResponse(args, "An unknown error occurred. Please talk to your system administrator for help.")
+			p.postCommandResponse(args, p.Localize(args.UserId, "command.error.generic", nil))
 		}
 	}
 
@@ -155,7 +183,7 @@ func (p *Plugin) ExecuteCommand(_ *plugin.Context, args *model.CommandArgs) (*mo
 
 func (p *Plugin) runSendCommand(args []string, extra *model.CommandArgs) (bool, error) {
 	if len(args) < 2 {
-		p.postCommandResponse(extra, "You must specify a user and a message.\n"+getHelp())
+		p.postCommandResponse(extra, "You must specify a user and a message.\n"+p.getHelp(extra.UserId))
 		return false, nil
 	}
 
@@ -165,7 +193,7 @@ func (p *Plugin) runSendCommand(args []string, extra *model.CommandArgs) (bool, 
 	}
 	receiver, appErr := p.API.GetUserByUsername(userName)
 	if appErr != nil {
-		p.postCommandResponse(extra, "Please, provide a valid user.\n"+getHelp())
+		p.postCommandResponse(extra, "Please, provide a valid user.\n"+p.getHelp(extra.UserId))
 		return false, nil
 	}
 
@@ -185,7 +213,7 @@ func (p *Plugin) runSendCommand(args []string, extra *model.CommandArgs) (bool, 
 
 	message := strings.Join(args[1:], " ")
 
-	receiverIssueID, err := p.listManager.SendIssue(extra.UserId, receiver.Id, message, "", "", "")
+	receiverIssueID, err := p.listManager.SendIssue(extra.UserId, receiver.Id, message, "", "", "", 0, 0)
 	if err != nil {
 		return false, err
 	}
@@ -215,7 +243,7 @@ func (p *Plugin) runAddCommand(args []string, extra *model.CommandArgs) (bool, e
 		return false, nil
 	}
 
-	newIssue, err := p.listManager.AddIssue(extra.UserId, message, "", "", "")
+	newIssue, err := p.listManager.AddIssue(extra.UserId, message, "", "", "", 0, 0)
 	if err != nil {
 		return false, err
 	}
@@ -224,7 +252,7 @@ func (p *Plugin) runAddCommand(args []string, extra *model.CommandArgs) (bool, e
 
 	p.sendRefreshEvent(extra.UserId, []string{MyListKey})
 
-	responseMessage := "Added Todo."
+	responseMessage := p.Localize(extra.UserId, "command.add.success", nil)
 
 	issues, err := p.listManager.GetIssueList(extra.UserId, MyListKey)
 	if err != nil {
@@ -270,7 +298,7 @@ func (p *Plugin) runListCommand(args []string, extra *model.CommandArgs) (bool, 
 			listID = OutListKey
 			responseMessage = "Sent Todo list:\n\n"
 		default:
-			p.postCommandResponse(extra, getHelp())
+			p.postCommandResponse(extra, p.getHelp(extra.UserId))
 			return true, nil
 		}
 	}

@@ -19,28 +19,27 @@ A plugin to track Todo issues in a list and send you daily reminders about your 
 2. On your Mattermost, go to System Console -> Plugin Management and upload it.
 3. Start using it!
 
+## ✨ Enterprise Features
+
+This integration has been enhanced with enterprise-grade features for better collaboration and task management:
+
+- **Relational SQL Backend**: Highly scalable storage supporting concurrency and complex queries.
+- **Task Comments**: Engage in discussions directly on Todo items.
+- **Priority Levels**: Categorize tasks by urgency (Low, Medium, High).
+- **Due Dates**: Set and track deadlines with visual indicators.
+- **Audit Logs**: Enterprise-ready traceability for all task modifications.
+- **Internationalization**: Full support for English and Vietnamese (more coming soon).
+
 ## Usage
 
-To add an issue to your Todo list, do one one of the following:
+### Managing Todos
+- **Add with Priority/Due Date**: Use the Sidebar or `/todo add` to create tasks. In the UI, you can specify a priority and a deadline.
+- **Comments**: Open a task in the Sidebar to view and add comments. Manage your discussions directly within the Todo item.
+- **Edit**: Modify task messages, descriptions, priorities, and due dates at any time.
 
-* Open the sidebar from the channel header and click the "Add new issue" button
-* Type `/todo add <your Todo message here>` into the textbox and send
-* Click the on the dropdown menu from a post and click "Add Todo"
-
-To view your Todo list, do one of the following:
-
-* Click on the button in the channel header to open the Todo list in the right sidebar.
-* Type `/todo list` into the textbox and send
-
-To remove an issue from your list:
-
-* Open the sidebar from the channel header and click the "Done" or "Won't Do" buttons below the issue you want to remove
-* Type `/todo pop` into the text and send to remove the top issue in the list
-
-To send an issue to another user:
-
-* Open the sidebar from the channel header and click the "Add new issue" button and select the user you want to send the issue to
-* Type `/todo send <username> <your Todo message here>` into the textbox and send
+### Collaboration
+- **Send and Assign**: Easily delegate tasks to other team members. Receivers will get a notification via the Todo bot.
+- **Status Tracking**: Transition tasks between "Open", "Accepted", and "Completed".
 
 Every day you will get a reminder of the issues you need to complete from the `Todo` bot. The message is only sent if you have issues on your Todo list.
 

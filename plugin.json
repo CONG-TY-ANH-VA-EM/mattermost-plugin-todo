@@ -1,6 +1,7 @@
 {
     "id": "com.mattermost.plugin-todo",
     "name": "Todo",
+    "version": "2.0.0",
     "description": "This plugin makes it easy to keep track of Todo issues and get daily reminders.",
     "homepage_url": "https://github.com/mattermost/mattermost-plugin-todo",
     "support_url": "https://github.com/mattermost/mattermost-plugin-todo/issues",
@@ -25,9 +26,32 @@
                 "key": "hide_team_sidebar",
                 "display_name": "Hide team sidebar buttons:",
                 "type": "bool",
-                "help_text": "When true, the buttons in the team sidebar on the left toolbar will be hidden.",
                 "placeholder": "",
                 "default": null
+            },
+            {
+                "key": "enable_smart_todo",
+                "display_name": "Enable Smart Todo (AI):",
+                "type": "bool",
+                "help_text": "When true, natural language commands will be processed by AI.",
+                "placeholder": "",
+                "default": false
+            },
+            {
+                "key": "llm_api_key",
+                "display_name": "OpenAI API Key:",
+                "type": "text",
+                "help_text": "Your OpenAI API Key (sk-...).",
+                "placeholder": "sk-...",
+                "default": ""
+            },
+            {
+                "key": "llm_model",
+                "display_name": "OpenAI Model:",
+                "type": "text",
+                "help_text": "The model to use (e.g., gpt-4o, gpt-4-turbo).",
+                "placeholder": "gpt-4o",
+                "default": "gpt-4o"
             }
         ]
     }

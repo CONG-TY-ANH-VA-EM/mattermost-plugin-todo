@@ -1,0 +1,20 @@
+{
+    "command.help": {
+        "other": "Available Commands:\n\nadd [message]\n\tAdds a Todo.\n\n\texample: /todo add Don't forget to be awesome\n\nlist\n\tLists your Todo issues.\n\nlist [listName]\n\tList your issues in certain list\n\n\texample: /todo list in\n\texample: /todo list out\n\texample (same as /todo list): /todo list my\n\npop\n\tRemoves the Todo issue at the top of the list.\n\nsend [user] [message]\n\tSends some user a Todo\n\n\texample: /todo send @awesomePerson Don't forget to be awesome\n\nsettings summary [on, off]\n\tSets user preference on daily reminders\n\n\texample: /todo settings summary on\n\nsettings allow_incoming_task_requests [on, off]\n\tAllow other Mattermost users to send a task for you to accept/decline?\n\n\texample: /todo settings allow_incoming_task_requests on\n\n\nhelp\n\tDisplay usage."
+    },
+    "command.add.success": {
+        "other": "Added Todo."
+    },
+    "command.send.success": {
+        "other": "Todo sent to @{{.Username}}."
+    },
+    "command.pop.success": {
+        "other": "Removed top Todo."
+    },
+    "command.error.generic": {
+        "other": "An unknown error occurred. Please talk to your system administrator for help."
+    },
+    "command.error.user": {
+        "other": "__Error: {{.Error}}.__\n\nRun `/todo help` for usage instructions."
+    }
+}

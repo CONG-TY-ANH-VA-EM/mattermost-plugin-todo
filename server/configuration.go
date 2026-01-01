@@ -20,7 +20,10 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
-	HideTeamSidebar bool `json:"hide_team_sidebar"`
+	HideTeamSidebar bool   `json:"hide_team_sidebar"`
+	EnableSmartTodo bool   `json:"enable_smart_todo"`
+	LLMApiKey       string `json:"llm_api_key"`
+	LLMModel        string `json:"llm_model"`
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
